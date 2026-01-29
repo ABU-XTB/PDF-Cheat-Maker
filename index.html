@@ -7,10 +7,12 @@
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <style>
         :root {
-            --primary: #2563eb;
+            --primary: #2563eb;       /* Blue for Generate */
             --primary-hover: #1d4ed8;
-            --success: #10b981; /* Green for Download */
+            --success: #10b981;       /* Green for Download */
             --success-hover: #059669;
+            --share: #8b5cf6;         /* Purple for Share */
+            --share-hover: #7c3aed;
             --bg: #f8fafc;
             --surface: #ffffff;
             --text: #1e293b;
@@ -157,27 +159,33 @@
             font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: background 0.2s, transform 0.1s;
             color: white;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
         }
+        
+        button:active { transform: scale(0.98); }
 
         /* Generate Button (Blue) */
-        #processBtn {
-            background-color: var(--primary);
-        }
+        #processBtn { background-color: var(--primary); }
         #processBtn:hover { background-color: var(--primary-hover); }
 
         /* Download Button (Green) */
-        #downloadBtn {
-            background-color: var(--success);
-        }
+        #downloadBtn { background-color: var(--success); }
         #downloadBtn:hover { background-color: var(--success-hover); }
+
+        /* Share Button (Purple) */
+        #shareBtn { background-color: var(--share); }
+        #shareBtn:hover { background-color: var(--share-hover); }
 
         /* Disabled State */
         button:disabled {
             background-color: #94a3b8 !important;
             cursor: not-allowed;
             opacity: 0.7;
+            transform: none;
         }
 
         /* Preview */
@@ -238,8 +246,9 @@
     </div>
 
     <div class="action-area">
-        <button id="processBtn" onclick="generatePreview()">🚀 Generate Cheat Sheet</button>
-        <button id="downloadBtn" onclick="downloadPDF()" disabled>📥 Download PDF</button>
+        <button id="processBtn" onclick="generatePreview()">🚀 Generate</button>
+        <button id="downloadBtn" onclick="downloadPDF()" disabled>📥 Download</button>
+        <button id="shareBtn" onclick="sharePDF()" disabled>🔗 Share PDF</button>
         <span id="status" class="status"></span>
     </div>
 
@@ -251,7 +260,8 @@
 <script>
     const { PDFDocument, rgb } = PDFLib;
     let selectedFile = null;
-    let currentPdfBlobUrl = null; // Store the generated blob URL
+    let currentPdfBlob = null; // Store the actual blob for sharing
+    let currentPdfBlobUrl = null; // Store the URL for preview/download
 
     // --- Drag & Drop Logic ---
     const dropZone = document.getElementById('dropZone');
@@ -309,6 +319,7 @@
         const statusSpan = document.getElementById('status');
         const processBtn = document.getElementById('processBtn');
         const downloadBtn = document.getElementById('downloadBtn');
+        const shareBtn = document.getElementById('shareBtn');
         const previewContainer = document.getElementById('preview-container');
         const iframe = document.getElementById('pdfPreview');
         
@@ -318,8 +329,10 @@
         }
 
         try {
+            // UI Loading State
             processBtn.disabled = true;
             downloadBtn.disabled = true;
+            shareBtn.disabled = true;
             statusSpan.innerText = "Processing...";
             previewContainer.style.display = "none";
 
@@ -345,12 +358,12 @@
             const destDoc = await PDFDocument.create();
             const totalSrcPages = srcDoc.getPageCount();
 
-            // Process Logic
+            // Process Logic (Front + Back Chunks)
             const inputChunkSize = CARDS_PER_SHEET * 2; 
 
             for (let i = 0; i < totalSrcPages; i += inputChunkSize) {
                 
-                // Front
+                // Front Page
                 const frontPage = destDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
                 for (let slot = 0; slot < CARDS_PER_SHEET; slot++) {
                     const inputPageIndex = i + (slot * 2);
@@ -361,67 +374,4 @@
                         const x = col * cellWidth;
                         const y = PAGE_HEIGHT - ((row + 1) * cellHeight);
 
-                        frontPage.drawPage(embeddedPage, { x, y, width: cellWidth, height: cellHeight });
-                        frontPage.drawRectangle({
-                            x, y, width: cellWidth, height: cellHeight,
-                            borderColor: rgb(0, 0, 0), borderWidth: 1,
-                        });
-                    }
-                }
-
-                // Back
-                if ((i + 1) < totalSrcPages) {
-                    const backPage = destDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-                    for (let slot = 0; slot < CARDS_PER_SHEET; slot++) {
-                        const inputPageIndex = i + (slot * 2) + 1;
-                        if (inputPageIndex < totalSrcPages) {
-                            const [embeddedPage] = await destDoc.embedPdf(srcDoc, [inputPageIndex]);
-                            const col = slot % COLS; 
-                            const row = Math.floor(slot / COLS);
-                            // Mirror Logic
-                            const mirrorCol = (COLS - 1) - col;
-                            const x = mirrorCol * cellWidth;
-                            const y = PAGE_HEIGHT - ((row + 1) * cellHeight);
-
-                            backPage.drawPage(embeddedPage, { x, y, width: cellWidth, height: cellHeight });
-                            backPage.drawRectangle({
-                                x, y, width: cellWidth, height: cellHeight,
-                                borderColor: rgb(0, 0, 0), borderWidth: 1,
-                            });
-                        }
-                    }
-                }
-            }
-
-            const pdfBytes = await destDoc.save();
-            const blob = new Blob([pdfBytes], { type: "application/pdf" });
-            currentPdfBlobUrl = URL.createObjectURL(blob);
-            
-            iframe.src = currentPdfBlobUrl;
-            previewContainer.style.display = "block";
-            
-            processBtn.disabled = false;
-            downloadBtn.disabled = false; // Enable download button
-            statusSpan.innerText = "Done! Review below.";
-            
-        } catch (err) {
-            console.error(err);
-            statusSpan.innerText = "Error: " + err.message;
-            processBtn.disabled = false;
-        }
-    }
-
-    function downloadPDF() {
-        if (currentPdfBlobUrl) {
-            const link = document.createElement('a');
-            link.href = currentPdfBlobUrl;
-            link.download = "cheat_sheet_result.pdf";
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-    }
-</script>
-
-</body>
-</html>
+                        frontPage.drawPage(embeddedPage, { x, y, width: cellWidth, height:
