@@ -9,6 +9,8 @@
         :root {
             --primary: #2563eb;
             --primary-hover: #1d4ed8;
+            --success: #10b981; /* Green for Download */
+            --success-hover: #059669;
             --bg: #f8fafc;
             --surface: #ffffff;
             --text: #1e293b;
@@ -69,7 +71,7 @@
         .drop-zone-text {
             font-size: 1.1rem;
             font-weight: 500;
-            pointer-events: none; /* Let clicks pass through to container */
+            pointer-events: none;
         }
         
         .file-info {
@@ -139,17 +141,16 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
-        /* Buttons */
+        /* Buttons Area */
         .action-area {
             display: flex;
-            gap: 10px;
+            gap: 15px;
             align-items: center;
             margin-top: 10px;
+            flex-wrap: wrap;
         }
 
         button {
-            background-color: var(--primary);
-            color: white;
             border: none;
             padding: 12px 24px;
             border-radius: 6px;
@@ -157,9 +158,27 @@
             font-weight: 600;
             cursor: pointer;
             transition: background 0.2s;
+            color: white;
         }
-        button:hover { background-color: var(--primary-hover); }
-        button:disabled { background-color: #94a3b8; cursor: not-allowed; }
+
+        /* Generate Button (Blue) */
+        #processBtn {
+            background-color: var(--primary);
+        }
+        #processBtn:hover { background-color: var(--primary-hover); }
+
+        /* Download Button (Green) */
+        #downloadBtn {
+            background-color: var(--success);
+        }
+        #downloadBtn:hover { background-color: var(--success-hover); }
+
+        /* Disabled State */
+        button:disabled {
+            background-color: #94a3b8 !important;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
 
         /* Preview */
         #preview-container {
@@ -176,7 +195,7 @@
             border: none;
             border-radius: 8px;
         }
-        .status { margin-left: 15px; font-weight: 500; color: #64748b; }
+        .status { margin-left: 5px; font-weight: 500; color: #64748b; }
         
         @media (max-width: 600px) { .controls { grid-template-columns: 1fr; } }
     </style>
@@ -220,6 +239,7 @@
 
     <div class="action-area">
         <button id="processBtn" onclick="generatePreview()">🚀 Generate Cheat Sheet</button>
+        <button id="downloadBtn" onclick="downloadPDF()" disabled>📥 Download PDF</button>
         <span id="status" class="status"></span>
     </div>
 
@@ -231,23 +251,19 @@
 <script>
     const { PDFDocument, rgb } = PDFLib;
     let selectedFile = null;
+    let currentPdfBlobUrl = null; // Store the generated blob URL
 
     // --- Drag & Drop Logic ---
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('pdfInput');
     const fileInfo = document.getElementById('fileInfo');
 
-    // Handle Click
     dropZone.addEventListener('click', () => fileInput.click());
 
-    // Handle Input Change
     fileInput.addEventListener('change', (e) => {
-        if (e.target.files.length > 0) {
-            handleFile(e.target.files[0]);
-        }
+        if (e.target.files.length > 0) handleFile(e.target.files[0]);
     });
 
-    // Handle Drag Events
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
         dropZone.classList.add('drag-over');
@@ -260,9 +276,7 @@
     dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         dropZone.classList.remove('drag-over');
-        if (e.dataTransfer.files.length > 0) {
-            handleFile(e.dataTransfer.files[0]);
-        }
+        if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
     });
 
     function handleFile(file) {
@@ -293,7 +307,8 @@
 
     async function generatePreview() {
         const statusSpan = document.getElementById('status');
-        const btn = document.getElementById('processBtn');
+        const processBtn = document.getElementById('processBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
         const previewContainer = document.getElementById('preview-container');
         const iframe = document.getElementById('pdfPreview');
         
@@ -303,8 +318,9 @@
         }
 
         try {
-            btn.disabled = true;
-            statusSpan.innerText = "Processing Cheat Sheet...";
+            processBtn.disabled = true;
+            downloadBtn.disabled = true;
+            statusSpan.innerText = "Processing...";
             previewContainer.style.display = "none";
 
             const isLandscape = document.getElementById('orientHoriz').checked;
@@ -330,7 +346,7 @@
             const totalSrcPages = srcDoc.getPageCount();
 
             // Process Logic
-            const inputChunkSize = CARDS_PER_SHEET * 2; // Front + Back
+            const inputChunkSize = CARDS_PER_SHEET * 2; 
 
             for (let i = 0; i < totalSrcPages; i += inputChunkSize) {
                 
@@ -379,18 +395,30 @@
 
             const pdfBytes = await destDoc.save();
             const blob = new Blob([pdfBytes], { type: "application/pdf" });
-            const url = URL.createObjectURL(blob);
+            currentPdfBlobUrl = URL.createObjectURL(blob);
             
-            iframe.src = url;
+            iframe.src = currentPdfBlobUrl;
             previewContainer.style.display = "block";
             
-            btn.disabled = false;
-            statusSpan.innerText = "Done! Download from toolbar above.";
+            processBtn.disabled = false;
+            downloadBtn.disabled = false; // Enable download button
+            statusSpan.innerText = "Done! Review below.";
             
         } catch (err) {
             console.error(err);
             statusSpan.innerText = "Error: " + err.message;
-            btn.disabled = false;
+            processBtn.disabled = false;
+        }
+    }
+
+    function downloadPDF() {
+        if (currentPdfBlobUrl) {
+            const link = document.createElement('a');
+            link.href = currentPdfBlobUrl;
+            link.download = "cheat_sheet_result.pdf";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         }
     }
 </script>
