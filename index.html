@@ -7,11 +7,11 @@
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <style>
         :root {
-            --primary: #2563eb;       /* Blue for Generate */
+            --primary: #2563eb;       
             --primary-hover: #1d4ed8;
-            --success: #10b981;       /* Green for Download */
+            --success: #10b981;       
             --success-hover: #059669;
-            --share: #8b5cf6;         /* Purple for Share */
+            --share: #8b5cf6;         
             --share-hover: #7c3aed;
             --bg: #f8fafc;
             --surface: #ffffff;
@@ -57,6 +57,7 @@
             background: #fafafa;
             color: #64748b;
             margin-bottom: 20px;
+            position: relative;
         }
 
         .drop-zone:hover {
@@ -70,6 +71,13 @@
             color: var(--primary);
         }
 
+        /* Success State for Drop Zone */
+        .drop-zone.file-loaded {
+            border-color: var(--success);
+            background-color: #ecfdf5;
+            color: var(--success-hover);
+        }
+
         .drop-zone-text {
             font-size: 1.1rem;
             font-weight: 500;
@@ -79,8 +87,8 @@
         .file-info {
             margin-top: 10px;
             font-size: 0.9rem;
-            color: var(--primary);
             font-weight: 600;
+            pointer-events: none;
         }
 
         /* Hide the actual input */
@@ -168,19 +176,15 @@
         
         button:active { transform: scale(0.98); }
 
-        /* Generate Button (Blue) */
         #processBtn { background-color: var(--primary); }
         #processBtn:hover { background-color: var(--primary-hover); }
 
-        /* Download Button (Green) */
         #downloadBtn { background-color: var(--success); }
         #downloadBtn:hover { background-color: var(--success-hover); }
 
-        /* Share Button (Purple) */
         #shareBtn { background-color: var(--share); }
         #shareBtn:hover { background-color: var(--share-hover); }
 
-        /* Disabled State */
         button:disabled {
             background-color: #94a3b8 !important;
             cursor: not-allowed;
@@ -217,7 +221,7 @@
     <div class="drop-zone" id="dropZone">
         <div class="drop-zone-text">📂 Drag & Drop PDF here or Click to Browse</div>
         <div class="file-info" id="fileInfo"></div>
-        <input type="file" id="pdfInput" accept="application/pdf">
+        <input type="file" id="pdfInput" accept=".pdf,application/pdf">
     </div>
 
     <div class="controls">
@@ -260,45 +264,68 @@
 <script>
     const { PDFDocument, rgb } = PDFLib;
     let selectedFile = null;
-    let currentPdfBlob = null; // Store the actual blob for sharing
-    let currentPdfBlobUrl = null; // Store the URL for preview/download
+    let currentPdfBlob = null;
+    let currentPdfBlobUrl = null;
 
     // --- Drag & Drop Logic ---
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('pdfInput');
     const fileInfo = document.getElementById('fileInfo');
 
-    dropZone.addEventListener('click', () => fileInput.click());
+    // 1. Handle Click (Browse)
+    dropZone.addEventListener('click', () => {
+        fileInput.value = null; // Reset input so same file can be selected again
+        fileInput.click();
+    });
 
+    // 2. Handle File Input Change
     fileInput.addEventListener('change', (e) => {
         if (e.target.files.length > 0) handleFile(e.target.files[0]);
     });
 
+    // 3. Handle Drag Events
     dropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
+        e.preventDefault(); // Essential for 'drop' to work
+        e.stopPropagation();
         dropZone.classList.add('drag-over');
     });
 
-    dropZone.addEventListener('dragleave', () => {
+    dropZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         dropZone.classList.remove('drag-over');
     });
 
     dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
+        e.stopPropagation();
         dropZone.classList.remove('drag-over');
-        if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            handleFile(files[0]);
+        }
     });
 
     function handleFile(file) {
-        if (file.type !== 'application/pdf') {
-            alert("Only PDF files are allowed!");
+        // Robust Check: Check MIME type OR file extension
+        const isPdfType = file.type === 'application/pdf';
+        const isPdfExt = file.name.toLowerCase().endsWith('.pdf');
+
+        if (!isPdfType && !isPdfExt) {
+            alert("Please upload a valid PDF file.");
             return;
         }
+
         selectedFile = file;
         fileInfo.textContent = `✅ Selected: ${file.name}`;
+        
+        // Visual Success Feedback
+        dropZone.classList.add('file-loaded');
+        dropZone.querySelector('.drop-zone-text').innerText = "File Loaded Successfully!";
     }
 
-    // --- Imposer Logic ---
+    // --- Imposer Logic (Same as before) ---
 
     function updateGridOptions() {
         const isLandscape = document.getElementById('orientHoriz').checked;
@@ -324,12 +351,11 @@
         const iframe = document.getElementById('pdfPreview');
         
         if (!selectedFile) {
-            alert("Please drag and drop a PDF file first.");
+            alert("Please select a PDF file first.");
             return;
         }
 
         try {
-            // UI Loading State
             processBtn.disabled = true;
             downloadBtn.disabled = true;
             shareBtn.disabled = true;
@@ -339,11 +365,9 @@
             const isLandscape = document.getElementById('orientHoriz').checked;
             const gridType = document.getElementById('gridSelect').value;
 
-            // Dimensions (A4 Points)
             let PAGE_WIDTH = isLandscape ? 841.89 : 595.28;
             let PAGE_HEIGHT = isLandscape ? 595.28 : 841.89;
 
-            // Grid Logic
             let ROWS, COLS;
             if (gridType === "6x3") { COLS = 6; ROWS = 3; }
             else if (gridType === "3x3") { COLS = 3; ROWS = 3; }
@@ -358,12 +382,11 @@
             const destDoc = await PDFDocument.create();
             const totalSrcPages = srcDoc.getPageCount();
 
-            // Process Logic (Front + Back Chunks)
             const inputChunkSize = CARDS_PER_SHEET * 2; 
 
             for (let i = 0; i < totalSrcPages; i += inputChunkSize) {
                 
-                // Front Page
+                // Front
                 const frontPage = destDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
                 for (let slot = 0; slot < CARDS_PER_SHEET; slot++) {
                     const inputPageIndex = i + (slot * 2);
@@ -374,4 +397,83 @@
                         const x = col * cellWidth;
                         const y = PAGE_HEIGHT - ((row + 1) * cellHeight);
 
-                        frontPage.drawPage(embeddedPage, { x, y, width: cellWidth, height:
+                        frontPage.drawPage(embeddedPage, { x, y, width: cellWidth, height: cellHeight });
+                        frontPage.drawRectangle({ x, y, width: cellWidth, height: cellHeight, borderColor: rgb(0, 0, 0), borderWidth: 1 });
+                    }
+                }
+
+                // Back
+                if ((i + 1) < totalSrcPages) {
+                    const backPage = destDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+                    for (let slot = 0; slot < CARDS_PER_SHEET; slot++) {
+                        const inputPageIndex = i + (slot * 2) + 1;
+                        if (inputPageIndex < totalSrcPages) {
+                            const [embeddedPage] = await destDoc.embedPdf(srcDoc, [inputPageIndex]);
+                            const col = slot % COLS; 
+                            const row = Math.floor(slot / COLS);
+                            const mirrorCol = (COLS - 1) - col;
+                            const x = mirrorCol * cellWidth;
+                            const y = PAGE_HEIGHT - ((row + 1) * cellHeight);
+
+                            backPage.drawPage(embeddedPage, { x, y, width: cellWidth, height: cellHeight });
+                            backPage.drawRectangle({ x, y, width: cellWidth, height: cellHeight, borderColor: rgb(0, 0, 0), borderWidth: 1 });
+                        }
+                    }
+                }
+            }
+
+            const pdfBytes = await destDoc.save();
+            currentPdfBlob = new Blob([pdfBytes], { type: "application/pdf" });
+            currentPdfBlobUrl = URL.createObjectURL(currentPdfBlob);
+            
+            iframe.src = currentPdfBlobUrl;
+            previewContainer.style.display = "block";
+            
+            processBtn.disabled = false;
+            downloadBtn.disabled = false;
+            shareBtn.disabled = false;
+            statusSpan.innerText = "Done! Review below.";
+            
+        } catch (err) {
+            console.error(err);
+            statusSpan.innerText = "Error: " + err.message;
+            processBtn.disabled = false;
+        }
+    }
+
+    function downloadPDF() {
+        if (currentPdfBlobUrl) {
+            const link = document.createElement('a');
+            link.href = currentPdfBlobUrl;
+            link.download = "cheat_sheet_result.pdf";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    }
+
+    async function sharePDF() {
+        if (!currentPdfBlob) return;
+        if (navigator.share) {
+            try {
+                const file = new File([currentPdfBlob], "cheat_sheet.pdf", { type: "application/pdf" });
+                if (navigator.canShare && !navigator.canShare({ files: [file] })) {
+                    alert("Your browser does not support sharing this file type.");
+                    return;
+                }
+                await navigator.share({
+                    title: 'My PDF Cheat Sheet',
+                    text: 'Here is the generated cheat sheet PDF!',
+                    files: [file]
+                });
+            } catch (err) {
+                console.log("Share failed or canceled:", err);
+            }
+        } else {
+            alert("Sharing is not supported on this browser/device.");
+        }
+    }
+</script>
+
+</body>
+</html>
